@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Filtro de NF-e: Livraria vs Papelaria</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- JSZip para geração de arquivos ZIP no download em lote -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        .drag-active {
+            border-color: #2563eb !important;
+            background-color: #eff6ff !important;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-slate-800 flex flex-col">
+
+    <!-- Top Header -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between">
+            <div class="flex items-center space-x-3.5">
+                <div class="bg-blue-600 text-white p-2.5 rounded-xl shadow-md flex items-center justify-center">
+                    <i class="fa-solid fa-file-invoice-dollar text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-slate-900 leading-tight">Filtro de NF-e</h1>
+                    <p class="text-xs text-slate-500 font-medium">Separação inteligente: Livraria vs Papelaria</p>
+                </div>
+            </div>
+            <div id="statsBadge" class="hidden sm:flex items-center space-x-2 text-xs font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+                <i class="fa-solid fa-files text-blue-500"></i>
+                <span id="totalLoadedCount">0</span> arquivos analisados
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-6">
+
+        <!-- Dropzone Section -->
+        <section>
+            <div id="dropzone" class="border-2 border-dashed border-slate-300 bg-white rounded-2xl p-8 sm:p-10 text-center transition-all duration-200 cursor-pointer hover:border-blue-500 hover:bg-slate-50 shadow-sm relative group">
+                <input type="file" id="fileInput" multiple accept=".xml" class="hidden">
+                <div class="flex flex-col items-center justify-center space-y-3">
+                    <div class="w-14 h-14 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-200 shadow-inner">
+                        <i class="fa-solid fa-cloud-arrow-up text-2xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-base font-semibold text-slate-800">Clique para selecionar ou arraste arquivos XML aqui</p>
+                        <p class="text-xs text-slate-500 mt-1">Carregue um ou múltiplos XMLs de NF-e para filtrar conjuntamente</p>
+                    </div>
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200 mt-2">
+                        <i class="fa-solid fa-circle-info mr-1.5 text-blue-500"></i> Identificação automática por ISBN, EAN e NCM 4901
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Controls and Filters Toolbar -->
+        <section id="controlsSection" class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <!-- Filter Tabs -->
+            <div class="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 self-start md:self-auto overflow-x-auto max-w-full">
+                <button id="filterAll" onclick="setCategoryFilter('all')" class="px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg text-slate-700 bg-white shadow-sm transition-all whitespace-nowrap">
+                    Todas (<span id="countAll">0</span>)
+                </button>
+                <button id="filterLivraria" onclick="setCategoryFilter('livraria')" class="px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition-all flex items-center gap-1.5 whitespace-nowrap">
+                    <i class="fa-solid fa-book text-emerald-600"></i> Livraria (<span id="countLivraria">0</span>)
+                </button>
+                <button id="filterPapelaria" onclick="setCategoryFilter('papelaria')" class="px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition-all flex items-center gap-1.5 whitespace-nowrap">
+                    <i class="fa-solid fa-pen-ruler text-amber-600"></i> Papelaria (<span id="countPapelaria">0</span>)
+                </button>
+            </div>
+
+            <!-- Download Actions -->
+            <div class="flex flex-wrap items-center gap-2.5">
+                <button id="btnDownloadSelected" onclick="downloadSelectedXMLs()" disabled class="px-3.5 py-2 bg-slate-100 text-slate-400 font-medium text-xs sm:text-sm rounded-xl border border-slate-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 disabled:opacity-50 disabled:hover:bg-slate-100 disabled:hover:text-slate-400 disabled:cursor-not-allowed transition-all flex items-center gap-2">
+                    <i class="fa-solid fa-square-check"></i>
+                    Baixar Selecionados (<span id="selectedCount">0</span>)
+                </button>
+                <button id="btnDownloadFiltered" onclick="downloadFilteredXMLs()" disabled class="px-3.5 py-2 bg-blue-600 text-white font-medium text-xs sm:text-sm rounded-xl hover:bg-blue-700 shadow-sm shadow-blue-200 disabled:opacity-50 disabled:hover:bg-blue-600 disabled:cursor-not-allowed transition-all flex items-center gap-2">
+                    <i class="fa-solid fa-file-zipper"></i>
+                    Baixar Todos os Filtrados
+                </button>
+                <button onclick="clearAllFiles()" class="px-3 py-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all" title="Limpar Tudo">
+                    <i class="fa-solid fa-trash-can text-sm"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- Results Table Container -->
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex-1 flex flex-col">
+            <!-- Empty State -->
+            <div id="emptyState" class="p-12 text-center flex flex-col items-center justify-center my-auto">
+                <div class="w-16 h-16 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center mb-4">
+                    <i class="fa-solid fa-folder-open text-2xl"></i>
+                </div>
+                <h3 class="text-base font-semibold text-slate-700">Nenhum arquivo XML carregado no momento.</h3>
+                <p class="text-xs text-slate-500 mt-1 max-w-sm">Carregue um ou múltiplos arquivos de NF-e no campo acima para iniciar a classificação automatizada.</p>
+            </div>
+
+            <!-- Table -->
+            <div id="tableContainer" class="hidden overflow-x-auto w-full">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50/80 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            <th class="py-3.5 px-4 w-12 text-center">
+                                <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)" class="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer">
+                            </th>
+                            <th class="py-3.5 px-4">Nº NF</th>
+                            <th class="py-3.5 px-4">Fornecedor / Emitente</th>
+                            <th class="py-3.5 px-4">Chave de Acesso</th>
+                            <th class="py-3.5 px-4 text-center">Categoria</th>
+                            <th class="py-3.5 px-4 text-right">Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="nfeTableBody" class="divide-y divide-slate-100 text-sm">
+                        <!-- Dynamic rows inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // Store parsed XML files data
+        let loadedNfeList = [];
+        let currentFilter = 'all'; // 'all', 'livraria', 'papelaria'
+
+        // DOM Elements
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('fileInput');
+        const emptyState = document.getElementById('emptyState');
+        const tableContainer = document.getElementById('tableContainer');
+        const nfeTableBody = document.getElementById('nfeTableBody');
+        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+        const selectedCountSpan = document.getElementById('selectedCount');
+        const btnDownloadSelected = document.getElementById('btnDownloadSelected');
+        const btnDownloadFiltered = document.getElementById('btnDownloadFiltered');
+
+        // Drag and Drop Event Listeners
+        dropzone.addEventListener('click', () => fileInput.click());
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('drag-active');
+        });
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('drag-active');
+        });
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('drag-active');
+            if (e.dataTransfer.files.length > 0) {
+                handleFiles(e.dataTransfer.files);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFiles(e.target.files);
+                fileInput.value = ''; // Reset input
+            }
+        });
+
+        // Process uploaded files
+        async function handleFiles(files) {
+            const xmlFiles = Array.from(files).filter(file => file.name.endsWith('.xml') || file.type === 'text/xml' || file.type === 'application/xml');
+            
+            if (xmlFiles.length === 0) {
+                alert('Por favor, selecione arquivos com extensão .xml válidos.');
+                return;
+            }
+
+            for (const file of xmlFiles) {
+                try {
+                    const text = await file.text();
+                    const nfeData = parseNFeXML(text, file.name);
+                    
+                    // Prevent duplicate keys
+                    if (!loadedNfeList.some(item => item.key === nfeData.key && item.key !== 'N/A')) {
+                        loadedNfeList.push(nfeData);
+                    }
+                } catch (err) {
+                    console.error('Erro ao ler XML:', file.name, err);
+                }
+            }
+
+            updateUI();
+        }
+
+        // Parse individual XML text
+        function parseNFeXML(xmlText, originalFileName) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+
+            // Extract Access Key
+            let key = 'N/A';
+            const infProtChNFe = xmlDoc.getElementsByTagName('chNFe')[0];
+            if (infProtChNFe && infProtChNFe.textContent) {
+                key = infProtChNFe.textContent.trim();
+            } else {
+                const infNFe = xmlDoc.getElementsByTagName('infNFe')[0];
+                if (infNFe && infNFe.getAttribute('Id')) {
+                    key = infNFe.getAttribute('Id').replace('NFe', '').trim();
+                }
+            }
+
+            // Extract NF Number
+            let nNF = 'N/A';
+            const nNFElem = xmlDoc.getElementsByTagName('nNF')[0];
+            if (nNFElem) nNF = nNFElem.textContent.trim();
+
+            // Extract Issuer Name (Fornecedor)
+            let emitName = 'Não Identificado';
+            const emit = xmlDoc.getElementsByTagName('emit')[0];
+            if (emit) {
+                const xNome = emit.getElementsByTagName('xNome')[0];
+                if (xNome) emitName = xNome.textContent.trim();
+            }
+
+            // Analyze products for bookstore criteria (ISBN / Book EAN / Book NCM)
+            const products = xmlDoc.getElementsByTagName('det');
+            let isLivraria = false;
+            let detectedReasons = [];
+
+            for (let i = 0; i < products.length; i++) {
+                const prod = products[i];
+                
+                const cEAN = prod.getElementsByTagName('cEAN')[0]?.textContent?.trim() || '';
+                const cEANTrib = prod.getElementsByTagName('cEANTrib')[0]?.textContent?.trim() || '';
+                const ncm = prod.getElementsByTagName('NCM')[0]?.textContent?.trim() || '';
+                const xProd = prod.getElementsByTagName('xProd')[0]?.textContent?.trim()?.toLowerCase() || '';
+
+                // 1. EAN / ISBN Rule: Check if EAN starts with 978 or 979 (International standard for books)
+                const hasBookEAN = cEAN.startsWith('978') || cEAN.startsWith('979') || 
+                                  cEANTrib.startsWith('978') || cEANTrib.startsWith('979');
+
+                // 2. NCM Rule: 4901 is the standard Mercosul NCM for Books, brochures and printed matter
+                const hasBookNCM = ncm.startsWith('4901');
+
+                // 3. Keyword heuristic check in product description
+                const containsBookKeywords = /\b(isbn|livro|livros|manga|mangá|editora|biografia|dicionario|dicionário|novela|romance|literatura)\b/i.test(xProd);
+
+                if (hasBookEAN || hasBookNCM || containsBookKeywords) {
+                    isLivraria = true;
+                    if (hasBookEAN) detectedReasons.push('ISBN/EAN (978/979)');
+                    if (hasBookNCM) detectedReasons.push('NCM Livro (4901)');
+                    if (containsBookKeywords) detectedReasons.push('Descrição');
+                    break; // One book item is sufficient to flag note or identify category
+                }
+            }
+
+            return {
+                id: 'nfe_' + Math.random().toString(36).substr(2, 9),
+                fileName: originalFileName,
+                xmlContent: xmlText,
+                number: nNF,
+                issuer: emitName,
+                key: key,
+                category: isLivraria ? 'livraria' : 'papelaria',
+                reasons: detectedReasons,
+                selected: false
+            };
+        }
+
+        // Filter tabs click handler
+        function setCategoryFilter(filter) {
+            currentFilter = filter;
+            
+            // Update active tab styles
+            const tabs = [
+                { id: 'filterAll', category: 'all' },
+                { id: 'filterLivraria', category: 'livraria' },
+                { id: 'filterPapelaria', category: 'papelaria' }
+            ];
+
+            tabs.forEach(tab => {
+                const btn = document.getElementById(tab.id);
+                if (tab.category === filter) {
+                    btn.className = "px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg text-slate-800 bg-white shadow-sm border border-slate-200/60 transition-all whitespace-nowrap";
+                } else {
+                    btn.className = "px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg text-slate-500 hover:text-slate-800 transition-all whitespace-nowrap";
+                }
+            });
+
+            renderTable();
+        }
+
+        // Get currently filtered list
+        function getFilteredList() {
+            if (currentFilter === 'all') return loadedNfeList;
+            return loadedNfeList.filter(item => item.category === currentFilter);
+        }
+
+        // Render table rows
+        function renderTable() {
+            const filteredList = getFilteredList();
+
+            if (loadedNfeList.length === 0) {
+                emptyState.classList.remove('hidden');
+                tableContainer.classList.add('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+                tableContainer.classList.remove('hidden');
+            }
+
+            nfeTableBody.innerHTML = '';
+
+            if (filteredList.length === 0 && loadedNfeList.length > 0) {
+                nfeTableBody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="py-12 text-center text-slate-400">
+                            Nenhuma nota fiscal encontrada nesta categoria.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            filteredList.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50/80 transition-colors";
+
+                const isLivraria = item.category === 'livraria';
+                const badgeStyle = isLivraria 
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                    : 'bg-amber-50 text-amber-700 border-amber-200';
+                const badgeIcon = isLivraria ? 'fa-book' : 'fa-pen-ruler';
+                const categoryName = isLivraria ? 'Livraria' : 'Papelaria';
+
+                tr.innerHTML = `
+                    <td class="py-3.5 px-4 text-center">
+                        <input type="checkbox" ${item.selected ? 'checked' : ''} onchange="toggleItemSelection('${item.id}', this.checked)" class="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer">
+                    </td>
+                    <td class="py-3.5 px-4 font-semibold text-slate-900">${item.number}</td>
+                    <td class="py-3.5 px-4 text-slate-700 font-medium max-w-xs truncate" title="${item.issuer}">${item.issuer}</td>
+                    <td class="py-3.5 px-4 font-mono text-xs text-slate-500 max-w-xs truncate" title="${item.key}">${item.key}</td>
+                    <td class="py-3.5 px-4 text-center">
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${badgeStyle}">
+                            <i class="fa-solid ${badgeIcon}"></i> ${categoryName}
+                        </span>
+                    </td>
+                    <td class="py-3.5 px-4 text-right">
+                        <button onclick="downloadSingleXML('${item.id}')" class="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-700 rounded-lg text-xs font-medium border border-slate-200 transition-all" title="Baixar XML individual">
+                            <i class="fa-solid fa-download text-xs"></i>
+                            <span>XML</span>
+                        </button>
+                    </td>
+                `;
+                nfeTableBody.appendChild(tr);
+            });
+
+            updateSelectionState();
+        }
+
+        // Update total badges and counts
+        function updateUI() {
+            const total = loadedNfeList.length;
+            const livrariaCount = loadedNfeList.filter(i => i.category === 'livraria').length;
+            const papelariaCount = loadedNfeList.filter(i => i.category === 'papelaria').length;
+
+            document.getElementById('totalLoadedCount').innerText = total;
+            document.getElementById('countAll').innerText = total;
+            document.getElementById('countLivraria').innerText = livrariaCount;
+            document.getElementById('countPapelaria').innerText = papelariaCount;
+
+            const statsBadge = document.getElementById('statsBadge');
+            if (total > 0) statsBadge.classList.remove('hidden');
+
+            renderTable();
+        }
+
+        // Toggle select box for single item
+        function toggleItemSelection(id, isChecked) {
+            const item = loadedNfeList.find(i => i.id === id);
+            if (item) item.selected = isChecked;
+            updateSelectionState();
+        }
+
+        // Toggle Select All checkbox
+        function toggleSelectAll(isChecked) {
+            const visibleList = getFilteredList();
+            visibleList.forEach(item => item.selected = isChecked);
+            renderTable();
+        }
+
+        // Update bulk buttons disabled/enabled status
+        function updateSelectionState() {
+            const visibleList = getFilteredList();
+            const selectedList = visibleList.filter(i => i.selected);
+
+            selectedCountSpan.innerText = selectedList.length;
+            btnDownloadSelected.disabled = selectedList.length === 0;
+            btnDownloadFiltered.disabled = visibleList.length === 0;
+
+            if (visibleList.length > 0 && selectedList.length === visibleList.length) {
+                selectAllCheckbox.checked = true;
+                selectAllCheckbox.indeterminate = false;
+            } else if (selectedList.length > 0) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = true;
+            } else {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+            }
+        }
+
+        // Clear all uploaded files
+        function clearAllFiles() {
+            if (loadedNfeList.length === 0) return;
+            if (confirm('Tem certeza que deseja remover todos os XMLs carregados?')) {
+                loadedNfeList = [];
+                updateUI();
+            }
+        }
+
+        // Trigger browser download helper
+        function triggerDownload(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Download single XML file
+        function downloadSingleXML(id) {
+            const item = loadedNfeList.find(i => i.id === id);
+            if (!item) return;
+
+            const blob = new Blob([item.xmlContent], { type: 'text/xml;charset=utf-8' });
+            triggerDownload(blob, item.fileName);
+        }
+
+        // Download selected XMLs (ZIP or Single)
+        async function downloadSelectedXMLs() {
+            const selectedList = getFilteredList().filter(i => i.selected);
+            if (selectedList.length === 0) return;
+
+            if (selectedList.length === 1) {
+                downloadSingleXML(selectedList[0].id);
+                return;
+            }
+
+            // Create ZIP for multiple files
+            const zip = new JSZip();
+            selectedList.forEach(item => {
+                zip.file(item.fileName, item.xmlContent);
+            });
+
+            const content = await zip.generateAsync({ type: 'blob' });
+            triggerDownload(content, `nfe_selecionadas_${new Date().toISOString().slice(0, 10)}.zip`);
+        }
+
+        // Download all filtered XMLs
+        async function downloadFilteredXMLs() {
+            const filteredList = getFilteredList();
+            if (filteredList.length === 0) return;
+
+            if (filteredList.length === 1) {
+                downloadSingleXML(filteredList[0].id);
+                return;
+            }
+
+            const zip = new JSZip();
+            filteredList.forEach(item => {
+                zip.file(item.fileName, item.xmlContent);
+            });
+
+            const filterLabel = currentFilter.toUpperCase();
+            const content = await zip.generateAsync({ type: 'blob' });
+            triggerDownload(content, `nfe_filtradas_${filterLabel}_${new Date().toISOString().slice(0, 10)}.zip`);
+        }
+    </script>
+</body>
+</html>
